@@ -87,6 +87,8 @@ class _MeasurementsPageState extends State<MeasurementsPage> {
                 final temperature =
                     data['temperature']?.toStringAsFixed(1) ?? 'N/A';
                 final spo2 = data['spo2']?.toStringAsFixed(1) ?? 'N/A';
+                final battery =
+                    data['batteryLevel']?.toStringAsFixed(0) ?? 'N/A';
                 // Adicione outros campos que o sensor enviar, como 'activityLevel'
                 // final activity = data['activityLevel']?.toStringAsFixed(1) ?? 'N/A';
 
@@ -117,6 +119,13 @@ class _MeasurementsPageState extends State<MeasurementsPage> {
                       value: spo2,
                       unit: '%',
                       color: Colors.blue,
+                    ),
+                    VitalSignCard(
+                      icon: Icons.battery_full,
+                      label: 'Bateria',
+                      value: battery,
+                      unit: '%',
+                      color: Colors.green,
                     ),
                     const VitalSignCard(
                       icon: Icons.directions_run,

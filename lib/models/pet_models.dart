@@ -144,6 +144,7 @@ class VitalSign {
   final double? temperature;
   final double? spo2;
   final double? activityLevel;
+  final double? batteryLevel;
 
   VitalSign({
     required this.timestamp,
@@ -151,6 +152,7 @@ class VitalSign {
     this.temperature,
     this.spo2,
     this.activityLevel,
+    this.batteryLevel,
   });
 }
 
