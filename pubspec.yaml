@@ -1,0 +1,39 @@
+name: pet_monitor_final
+description: "Um novo projeto Flutter para monitoramento de pets."
+publish_to: 'none' 
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Pacotes essenciais
+  cupertino_icons: ^1.0.6
+  provider: ^6.1.2
+  intl: ^0.19.0
+
+  # Versões estáveis e compatíveis do Firebase
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.16.0
+  cloud_firestore: ^4.14.0
+  firebase_storage: ^11.6.0
+  firebase_messaging: ^14.7.10
+  
+  # Pacotes de funcionalidades
+  image_picker: ^1.1.2
+  sqflite: ^2.3.3+1
+  path_provider: ^2.1.3
+  fl_chart: ^0.68.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

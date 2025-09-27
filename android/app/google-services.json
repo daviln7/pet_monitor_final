@@ -1,0 +1,59 @@
+{
+  "project_info": {
+    "project_number": "903104501156",
+    "firebase_url": "https://pet-monitor-e0437-default-rtdb.firebaseio.com",
+    "project_id": "pet-monitor-e0437",
+    "storage_bucket": "pet-monitor-e0437.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:903104501156:android:eca3cc179c61900db69d31",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "903104501156-6m02t3i40ighdiunshaem6bd5o85n3h3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.flutter_application_1",
+            "certificate_hash": "ccfeb4069f26232b6ac1f3a3b010480c9db9b0f6"
+          }
+        },
+        {
+          "client_id": "903104501156-f7qasd4o0ore54l5olbmcjofto3846qp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.flutter_application_1",
+            "certificate_hash": "5f58bf0409fabf11e81dbde2486c2f81438ef5e9"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFvoHEEzvqI7k-mcNqwCgPjteFYUlredU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "903104501156-apso3r8m228o9e95k2hhatea56uh190g.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "903104501156-fq4e65mmqhjou4ttuc0l0s6ia7su2tud.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.flutterApplication1"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
