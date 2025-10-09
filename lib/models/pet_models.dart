@@ -113,26 +113,38 @@ class Pet {
 
   // NOVO: Cria um objeto Pet a partir de um Map
   factory Pet.fromMap(Map<String, dynamic> map) {
+    // Garantir que os valores numéricos sejam lidos corretamente
+    num heartRateMin = map['heartRateMin'] ?? 0;
+    num heartRateMax = map['heartRateMax'] ?? 0;
+    num temperatureMin = map['temperatureMin'] ?? 0;
+    num temperatureMax = map['temperatureMax'] ?? 0;
+    num spo2Min = map['spo2Min'] ?? 0;
+
     return Pet(
       id: map['id'],
       name: map['name'],
       breed: map['breed'],
       species: Species.values.firstWhere(
         (e) => e.toString() == 'Species.${map['species']}',
+        orElse: () => Species.dog, // Valor padrão caso não encontre
       ),
       age: map['age'],
       avatarUrl: map['avatarUrl'],
-      avatarFile: map['avatarFile'] != null ? File(map['avatarFile']) : null,
+      // --- ALTERAÇÃO AQUI ---
+      // avatarFile será sempre nulo ao carregar do Firestore.
+      // A imagem será carregada pela avatarUrl.
+      avatarFile: null,
       ownerId: map['ownerId'],
       healthStatus: HealthStatus.values.firstWhere(
         (e) => e.toString() == 'HealthStatus.${map['healthStatus']}',
+        orElse: () => HealthStatus.unknown,
       ),
       thresholds: VitalThresholds(
-        heartRateMin: map['heartRateMin'],
-        heartRateMax: map['heartRateMax'],
-        temperatureMin: map['temperatureMin'],
-        temperatureMax: map['temperatureMax'],
-        spo2Min: map['spo2Min'],
+        heartRateMin: heartRateMin.toDouble(),
+        heartRateMax: heartRateMax.toDouble(),
+        temperatureMin: temperatureMin.toDouble(),
+        temperatureMax: temperatureMax.toDouble(),
+        spo2Min: spo2Min.toDouble(),
       ),
     );
   }
@@ -176,6 +188,7 @@ class Alert {
   final String id;
   final String petId;
   final String petName;
+  final String ownerId;
   final DateTime timestamp;
   final String message;
   final String severity;
@@ -185,6 +198,7 @@ class Alert {
     required this.id,
     required this.petId,
     required this.petName,
+    required this.ownerId,
     required this.timestamp,
     required this.message,
     required this.severity,

@@ -12,37 +12,85 @@ class FirestoreService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
-  // Coleção de pets
   late final CollectionReference<Pet> _petsRef;
   late final CollectionReference _usersRef;
-  late final CollectionReference
-  _vitalsRef; // Variável de referência para os sinais vitais
+  late final CollectionReference _vitalsRef;
+  // --- NOVO ---
+  // Referência para a coleção de alertas.
+  late final CollectionReference _alertsRef;
 
   FirestoreService() {
-    _petsRef = _db
-        .collection('pets')
-        .withConverter<Pet>(
+    _petsRef = _db.collection('pets').withConverter<Pet>(
           fromFirestore: (snapshots, _) => Pet.fromMap(snapshots.data()!),
           toFirestore: (pet, _) => pet.toMap(),
         );
     _usersRef = _db.collection('users');
-    _vitalsRef = _db.collection(
-      'vitals',
-    ); // Aponta a variável para a coleção 'vitals' no Firestore.
+    _vitalsRef = _db.collection('vitals');
+    // --- NOVO ---
+    // Inicializa a referência da coleção de alertas.
+    _alertsRef = _db.collection('alerts');
   }
 
-  // NOVO: Método para salvar o token FCM do usuário
+  // --- NOVO ---
+  /// Cria um novo documento de alerta no Firestore.
+  Future<void> createAlert(Alert alert) async {
+    try {
+      // Usamos 'add' para que o Firestore gere um ID automático para o alerta.
+      await _alertsRef.add({
+        'petId': alert.petId,
+        'petName': alert.petName,
+        'ownerId': alert.ownerId,
+        'timestamp': alert.timestamp,
+        'message': alert.message,
+        'severity': alert.severity,
+        'acknowledged': false,
+      });
+      debugPrint("Alerta criado com sucesso: ${alert.message}");
+    } catch (e) {
+      debugPrint("Erro ao criar alerta: $e");
+    }
+  }
+
+  // --- NOVO ---
+  /// Busca os últimos 20 registos de sinais vitais para um pet, para usar nos gráficos.
+  Future<List<VitalSign>> getVitalHistory(String petId) async {
+    try {
+      final querySnapshot = await _vitalsRef
+          .doc(petId)
+          .collection(
+              'history') // Assumindo que o histórico fica numa subcoleção
+          .orderBy('timestamp', descending: true)
+          .limit(20) // Pega os 20 mais recentes
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        return [];
+      }
+
+      // Converte os documentos do Firestore para a nossa classe VitalSign
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        final timestamp = (data['timestamp'] as Timestamp).toDate();
+        return VitalSign(
+          timestamp: timestamp,
+          heartRate: data['heartRate']?.toDouble(),
+          temperature: data['temperature']?.toDouble(),
+          spo2: data['spo2']?.toDouble(),
+          batteryLevel: data['batteryLevel']?.toDouble(),
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint("Erro ao buscar histórico de sinais vitais: $e");
+      return [];
+    }
+  }
+
   Future<void> saveUserToken(String userId) async {
     try {
-      // Solicita permissão para notificações (essencial no iOS)
       await _fcm.requestPermission();
-
-      // Obtém o token do dispositivo
       String? token = await _fcm.getToken();
 
       if (token != null) {
-        // Salva o token no Firestore, associado ao ID do usuário
-        // Usamos SetOptions(merge: true) para não sobrescrever outros dados do usuário
         await _usersRef.doc(userId).set({
           'fcmToken': token,
           'lastUpdated': FieldValue.serverTimestamp(),
@@ -54,21 +102,11 @@ class FirestoreService {
     }
   }
 
-  // --- Operações com Imagens (Firebase Storage) ---
-
-  /// Faz o upload de um arquivo de imagem para o Firebase Storage e retorna a URL de download.
   Future<String?> uploadAvatar(String petId, File imageFile) async {
     try {
-      // Define o caminho no Storage: /avatars/{petId}.jpg
       final ref = _storage.ref().child('avatars').child('$petId.jpg');
-
-      // Faz o upload do arquivo
       UploadTask uploadTask = ref.putFile(imageFile);
-
-      // Aguarda a conclusão do upload
       TaskSnapshot snapshot = await uploadTask;
-
-      // Retorna a URL de download da imagem
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
       debugPrint("Erro no upload do avatar: $e");
@@ -76,14 +114,10 @@ class FirestoreService {
     }
   }
 
-  // --- Operações com Pets (Cloud Firestore) ---
-
-  /// Busca a lista de pets de um usuário específico.
   Future<List<Pet>> getPetsForUser(String userId) async {
     try {
-      final querySnapshot = await _petsRef
-          .where('ownerId', isEqualTo: userId)
-          .get();
+      final querySnapshot =
+          await _petsRef.where('ownerId', isEqualTo: userId).get();
       return querySnapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
       debugPrint("Erro ao buscar pets: $e");
@@ -91,10 +125,8 @@ class FirestoreService {
     }
   }
 
-  /// Adiciona ou atualiza um pet no Firestore.
   Future<void> setPet(Pet pet) async {
     try {
-      // Usamos 'set' com o ID do pet para criar ou sobrescrever o documento.
       await _petsRef.doc(pet.id).set(pet, SetOptions(merge: true));
     } catch (e) {
       debugPrint("Erro ao salvar o pet: $e");
@@ -102,14 +134,11 @@ class FirestoreService {
     }
   }
 
-  /// Deleta um pet do Firestore.
   Future<void> deletePet(String petId) async {
     try {
       await _petsRef.doc(petId).delete();
-      // Opcional: deletar também a foto do storage
       await _storage.ref().child('avatars').child('$petId.jpg').delete();
     } catch (e) {
-      // Ignora erro se o arquivo não existir no storage
       if (e is FirebaseException && e.code == 'object-not-found') {
         debugPrint("Avatar para deletar não encontrado, continuando...");
       } else {
@@ -120,8 +149,5 @@ class FirestoreService {
 
   Stream<DocumentSnapshot> getVitalsStream(String petId) {
     return _vitalsRef.doc(petId).snapshots();
-
-    /// Retorna um Stream (fluxo) de dados para os sinais vitais de um pet específico.
-    /// Este método "escuta" as mudanças no documento de sinais vitais do pet e notifica o app em tempo real sempre que os dados são atualizados.
   }
 }
