@@ -1,6 +1,6 @@
-// lib/models/pet_models.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum Species {
   dog,
@@ -16,14 +16,118 @@ enum Species {
   }
 }
 
-enum HealthStatus { stable, attention, critical, unknown }
+enum HealthStatus {
+  healthy,
+  warning,
+  critical,
+  unknown;
 
-class User {
-  final String id;
-  final String email;
-  final bool isGuest;
+  String get displayName {
+    switch (this) {
+      case HealthStatus.healthy:
+        return 'Saudável';
+      case HealthStatus.warning:
+        return 'Atenção';
+      case HealthStatus.critical:
+        return 'Crítico';
+      case HealthStatus.unknown:
+        return 'Desconhecido';
+    }
+  }
 
-  User({required this.id, required this.email, required this.isGuest});
+  Color get color {
+    switch (this) {
+      case HealthStatus.healthy:
+        return Colors.green;
+      case HealthStatus.warning:
+        return Colors.orange;
+      case HealthStatus.critical:
+        return Colors.red;
+      case HealthStatus.unknown:
+        return Colors.grey;
+    }
+  }
+}
+
+class VitalThresholds {
+  final double minTemp;
+  final double maxTemp;
+  final double minHeartRate;
+  final double maxHeartRate;
+  final double minSpo2;
+
+  VitalThresholds({
+    this.minTemp = 37.5,
+    this.maxTemp = 39.5,
+    this.minHeartRate = 60.0,
+    this.maxHeartRate = 140.0,
+    this.minSpo2 = 95.0,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'minTemp': minTemp,
+      'maxTemp': maxTemp,
+      'minHeartRate': minHeartRate,
+      'maxHeartRate': maxHeartRate,
+      'minSpo2': minSpo2,
+    };
+  }
+
+  factory VitalThresholds.fromMap(Map<String, dynamic> map) {
+    return VitalThresholds(
+      minTemp: (map['minTemp'] ?? 37.5).toDouble(),
+      maxTemp: (map['maxTemp'] ?? 39.5).toDouble(),
+      minHeartRate: (map['minHeartRate'] ?? 60.0).toDouble(),
+      maxHeartRate: (map['maxHeartRate'] ?? 140.0).toDouble(),
+      minSpo2: (map['minSpo2'] ?? 95.0).toDouble(),
+    );
+  }
+}
+
+class VitalSign {
+  final DateTime timestamp;
+  final double? temperature;
+  final double? heartRate;
+  final double? spo2;
+
+  VitalSign({
+    required this.timestamp,
+    this.temperature,
+    this.heartRate,
+    this.spo2,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'timestamp': Timestamp.fromDate(timestamp),
+      'temperature': temperature,
+      'heartRate': heartRate,
+      'spo2': spo2,
+    };
+  }
+
+  factory VitalSign.fromMap(Map<String, dynamic> map) {
+    DateTime date;
+    if (map['timestamp'] is Timestamp) {
+      date = (map['timestamp'] as Timestamp).toDate();
+    } else if (map['timestamp'] is String) {
+      date = DateTime.parse(map['timestamp']);
+    } else {
+      date = DateTime.now();
+    }
+
+    return VitalSign(
+      timestamp: date,
+      temperature: map['temperature'] != null
+          ? (map['temperature'] as num).toDouble()
+          : null,
+      heartRate: map['heartRate'] != null
+          ? (map['heartRate'] as num).toDouble()
+          : null,
+      spo2: map['spo2'] != null ? (map['spo2'] as num).toDouble() : null,
+    );
+  }
 }
 
 class Pet {
@@ -32,8 +136,8 @@ class Pet {
   final String breed;
   final Species species;
   final int age;
-  final String? avatarUrl;
   final File? avatarFile;
+  final String? avatarUrl;
   final String ownerId;
   final HealthStatus healthStatus;
   final VitalThresholds thresholds;
@@ -44,12 +148,21 @@ class Pet {
     required this.breed,
     required this.species,
     required this.age,
-    this.avatarUrl,
     this.avatarFile,
+    this.avatarUrl,
     required this.ownerId,
-    required this.healthStatus,
+    this.healthStatus = HealthStatus.unknown,
     required this.thresholds,
   });
+
+  ImageProvider get avatar {
+    if (avatarFile != null) return FileImage(avatarFile!);
+    if (avatarUrl != null && avatarUrl!.isNotEmpty)
+      return NetworkImage(avatarUrl!);
+    return species == Species.dog
+        ? const AssetImage('assets/images/default_dog.png')
+        : const AssetImage('assets/images/default_cat.png');
+  }
 
   Pet copyWith({
     String? id,
@@ -57,8 +170,8 @@ class Pet {
     String? breed,
     Species? species,
     int? age,
-    String? avatarUrl,
     File? avatarFile,
+    String? avatarUrl,
     String? ownerId,
     HealthStatus? healthStatus,
     VitalThresholds? thresholds,
@@ -69,139 +182,66 @@ class Pet {
       breed: breed ?? this.breed,
       species: species ?? this.species,
       age: age ?? this.age,
-      avatarUrl: avatarUrl ?? this.avatarUrl,
       avatarFile: avatarFile ?? this.avatarFile,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       ownerId: ownerId ?? this.ownerId,
       healthStatus: healthStatus ?? this.healthStatus,
       thresholds: thresholds ?? this.thresholds,
     );
   }
 
-  ImageProvider get avatar {
-    if (avatarFile != null) {
-      return FileImage(avatarFile!);
-    }
-    if (avatarUrl != null) {
-      return NetworkImage(avatarUrl!);
-    }
-    if (species == Species.dog) {
-      return const AssetImage('assets/images/default_dog.png');
-    } else {
-      return const AssetImage('assets/images/default_cat.png');
-    }
-  }
-
-  // NOVO: Converte um objeto Pet para um Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'name': name,
       'breed': breed,
-      'species': species.toString().split('.').last,
+      'species': species.index,
       'age': age,
-      'avatarUrl': avatarUrl, // O avatarUrl é o que será salvo!
-      //'avatarFile': avatarFile?.path, // REMOVA OU COMENTE ESTA LINHA
+      'avatarUrl': avatarUrl,
       'ownerId': ownerId,
-      'healthStatus': healthStatus.toString().split('.').last,
-      'heartRateMin': thresholds.heartRateMin,
-      'heartRateMax': thresholds.heartRateMax,
-      'temperatureMin': thresholds.temperatureMin,
-      'temperatureMax': thresholds.temperatureMax,
-      'spo2Min': thresholds.spo2Min,
+      'healthStatus': healthStatus.index,
+      'thresholds': thresholds.toMap(),
     };
   }
 
-  // NOVO: Cria um objeto Pet a partir de um Map
-  factory Pet.fromMap(Map<String, dynamic> map) {
-    // Garantir que os valores numéricos sejam lidos corretamente
-    num heartRateMin = map['heartRateMin'] ?? 0;
-    num heartRateMax = map['heartRateMax'] ?? 0;
-    num temperatureMin = map['temperatureMin'] ?? 0;
-    num temperatureMax = map['temperatureMax'] ?? 0;
-    num spo2Min = map['spo2Min'] ?? 0;
-
+  factory Pet.fromMap(Map<String, dynamic> map, String documentId) {
     return Pet(
-      id: map['id'],
-      name: map['name'],
-      breed: map['breed'],
-      species: Species.values.firstWhere(
-        (e) => e.toString() == 'Species.${map['species']}',
-        orElse: () => Species.dog, // Valor padrão caso não encontre
-      ),
-      age: map['age'],
+      id: documentId,
+      name: map['name'] ?? '',
+      breed: map['breed'] ?? '',
+      species: Species.values[map['species'] ?? 0],
+      age: map['age'] ?? 0,
       avatarUrl: map['avatarUrl'],
-      // --- ALTERAÇÃO AQUI ---
-      // avatarFile será sempre nulo ao carregar do Firestore.
-      // A imagem será carregada pela avatarUrl.
-      avatarFile: null,
-      ownerId: map['ownerId'],
-      healthStatus: HealthStatus.values.firstWhere(
-        (e) => e.toString() == 'HealthStatus.${map['healthStatus']}',
-        orElse: () => HealthStatus.unknown,
-      ),
-      thresholds: VitalThresholds(
-        heartRateMin: heartRateMin.toDouble(),
-        heartRateMax: heartRateMax.toDouble(),
-        temperatureMin: temperatureMin.toDouble(),
-        temperatureMax: temperatureMax.toDouble(),
-        spo2Min: spo2Min.toDouble(),
-      ),
+      ownerId: map['ownerId'] ?? '',
+      healthStatus: HealthStatus.values[map['healthStatus'] ?? 3],
+      thresholds: map['thresholds'] != null
+          ? VitalThresholds.fromMap(map['thresholds'])
+          : VitalThresholds(),
     );
   }
 }
 
-class VitalSign {
-  final DateTime timestamp;
-  final double? heartRate;
-  final double? temperature;
-  final double? spo2;
-  final double? activityLevel;
-  final double? batteryLevel;
-
-  VitalSign({
-    required this.timestamp,
-    this.heartRate,
-    this.temperature,
-    this.spo2,
-    this.activityLevel,
-    this.batteryLevel,
-  });
-}
-
-class VitalThresholds {
-  final double heartRateMin;
-  final double heartRateMax;
-  final double temperatureMin;
-  final double temperatureMax;
-  final double spo2Min;
-
-  VitalThresholds({
-    required this.heartRateMin,
-    required this.heartRateMax,
-    required this.temperatureMin,
-    required this.temperatureMax,
-    required this.spo2Min,
-  });
-}
-
+// --- CLASSE ALERT ATUALIZADA ---
 class Alert {
   final String id;
   final String petId;
-  final String petName;
-  final String ownerId;
-  final DateTime timestamp;
+  final String ownerId; // Novo campo
+  final String petName; // Novo campo
+  final String title;
   final String message;
-  final String severity;
+  final String severity; // Novo campo (Ex: "high", "medium")
+  final DateTime timestamp;
   final bool acknowledged;
 
   Alert({
     required this.id,
     required this.petId,
-    required this.petName,
     required this.ownerId,
-    required this.timestamp,
+    required this.petName,
+    required this.title,
     required this.message,
     required this.severity,
-    required this.acknowledged,
+    required this.timestamp,
+    this.acknowledged = false,
   });
 }

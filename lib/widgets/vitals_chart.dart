@@ -1,71 +1,86 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 
-// Um widget reutilizável para exibir um gráfico de linha.
 class VitalsChart extends StatelessWidget {
   final String title;
-  final List<FlSpot> dataPoints; // O formato de dados que o fl_chart usa.
-  final Color lineColor;
+  final List<FlSpot> dataPoints;
+  final Color lineColor; // Certifique-se que esta linha existe
 
   const VitalsChart({
     super.key,
     required this.title,
     required this.dataPoints,
-    required this.lineColor,
+    required this.lineColor, // E esta também
   });
 
   @override
   Widget build(BuildContext context) {
+    // Proteção para lista vazia
+    if (dataPoints.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          const SizedBox(
+              height: 150,
+              child: Center(child: Text("Sem dados para o gráfico"))),
+        ],
+      );
+    }
+
+    final double minY =
+        dataPoints.map((p) => p.y).reduce((a, b) => a < b ? a : b) - 2;
+    final double maxY =
+        dataPoints.map((p) => p.y).reduce((a, b) => a > b ? a : b) + 2;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        Text(title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        // AspectRatio garante que o gráfico mantenha uma proporção, evitando distorções.
-        AspectRatio(
-          aspectRatio: 2, // Largura é 2x a altura.
-          // O widget principal do pacote fl_chart para gráficos de linha.
+        SizedBox(
+          height: 150,
           child: LineChart(
             LineChartData(
-              // Tira as bordas do gráfico.
-              borderData: FlBorderData(show: false),
-              // Configura as linhas de grade.
-              gridData: const FlGridData(show: true),
-              // Configura os títulos dos eixos X e Y.
-              titlesData: const FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: true, reservedSize: 40),
-                ),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                topTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                rightTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              // Define os dados da linha a ser desenhada.
               lineBarsData: [
                 LineChartBarData(
-                  spots: dataPoints, // Os pontos (x, y) do gráfico.
-                  isCurved: true, // Desenha a linha com curvas suaves.
+                  spots: dataPoints,
+                  isCurved: true,
                   color: lineColor,
                   barWidth: 3,
-                  dotData: const FlDotData(
-                    show: false,
-                  ), // Esconde os pontos individuais.
+                  isStrokeCapRound: true,
+                  dotData: const FlDotData(show: false),
                   belowBarData: BarAreaData(
-                    // Área colorida abaixo da linha.
                     show: true,
-                    color: lineColor.withOpacity(0.2),
+                    gradient: LinearGradient(
+                      colors: [
+                        lineColor.withOpacity(0.3),
+                        lineColor.withOpacity(0.0)
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
                   ),
                 ),
               ],
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+              minY: minY,
+              maxY: maxY,
+              titlesData: const FlTitlesData(
+                leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
+                rightTitles:
+                    AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles:
+                    AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                bottomTitles:
+                    AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
             ),
           ),
         ),

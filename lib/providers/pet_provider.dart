@@ -1,62 +1,62 @@
-// lib/providers/pet_provider.dart
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:math';
-import 'package:cloud_firestore/cloud_firestore.dart'; // --- ALTERAÇÃO: Importado para usar o Timestamp
 import '../models/pet_models.dart';
 import '../services/firestore_service.dart';
 
 class PetProvider with ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
+
   List<Pet> _pets = [];
-  List<Alert> _alerts =
-      []; // --- ALTERAÇÃO: A lista de alertas agora virá do Firestore
+  final List<Alert> _alerts = [];
   String? _currentUserId;
+  StreamSubscription<List<Pet>>? _petsSubscription;
 
-  // --- ALTERAÇÃO: Variáveis para ouvir os alertas em tempo real do Firestore
-  StreamSubscription? _alertSubscription;
-  final CollectionReference _alertsRef =
-      FirebaseFirestore.instance.collection('alerts');
+  List<Pet> get pets => _pets;
+  List<Alert> get alerts => _alerts;
 
-  // --- ALTERAÇÃO: Removido o timer de simulação daqui para evitar confusão.
-  // Timer? _simulationTimer;
+  // --- FUNÇÕES DE SETUP ---
 
-  PetProvider() {
-    // A simulação não começa mais automaticamente.
-  }
-
-  // Getters
-  List<Pet> get pets => [..._pets];
-  List<Alert> get alerts {
-    _alerts.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return [..._alerts];
-  }
-
-  // Carrega os pets e começa a ouvir os alertas
-  Future<void> loadUserPets(String userId) async {
+  void setUserId(String userId) {
     _currentUserId = userId;
-    _pets = await _firestoreService.getPetsForUser(userId);
-
-    // --- ALTERAÇÃO: Inicia o "ouvinte" de alertas do Firestore
-    _listenToAlerts();
-
-    notifyListeners();
+    _fetchPets();
   }
 
-  // Limpa os dados e cancela os "ouvintes" ao fazer logout
+  // Recupera a função antiga para compatibilidade com main.dart
+  Future<void> loadUserPets(String userId) async {
+    setUserId(userId);
+    // Como agora é um Stream, não precisamos esperar nada,
+    // mas mantemos o Future para não quebrar quem chama com 'await'.
+  }
+
+  void _fetchPets() {
+    if (_currentUserId == null) return;
+
+    _petsSubscription?.cancel();
+    _petsSubscription =
+        _firestoreService.getPetsStream(_currentUserId!).listen((petsData) {
+      _pets = petsData;
+      notifyListeners();
+    });
+  }
+
+  // Recupera a função para limpar dados (settings_page.dart)
   void clearData() {
-    _pets.clear();
+    _pets = [];
     _alerts.clear();
     _currentUserId = null;
-
-    // --- ALTERAÇÃO: Para o "ouvinte" de alertas para não usar recursos desnecessariamente
-    _alertSubscription?.cancel();
-
+    _petsSubscription?.cancel();
     notifyListeners();
   }
 
-  // --- ALTERAÇÃO: Lógica de adicionar pet corrigida para garantir que a URL seja salva ---
+  @override
+  void dispose() {
+    _petsSubscription?.cancel();
+    super.dispose();
+  }
+
+  // --- CRUD DE PETS ---
+
   Future<void> addPet({
     required String name,
     required String breed,
@@ -65,9 +65,7 @@ class PetProvider with ChangeNotifier {
     File? avatarFile,
     required VitalThresholds thresholds,
   }) async {
-    if (_currentUserId == null) {
-      throw Exception('Usuário não autenticado.');
-    }
+    if (_currentUserId == null) throw Exception('Usuário não autenticado.');
 
     String petId = DateTime.now().millisecondsSinceEpoch.toString();
     String? avatarUrl;
@@ -82,118 +80,87 @@ class PetProvider with ChangeNotifier {
       breed: breed,
       species: species,
       age: age,
-      avatarFile: null, // O ficheiro local não é guardado no estado
-      avatarUrl: avatarUrl, // Salva a URL da nuvem
+      avatarFile: null,
+      avatarUrl: avatarUrl,
       ownerId: _currentUserId!,
       healthStatus: HealthStatus.unknown,
       thresholds: thresholds,
     );
 
     await _firestoreService.setPet(newPet);
-    _pets.add(newPet);
-    notifyListeners();
   }
 
-  // --- ALTERAÇÃO: Lógica de atualizar pet corrigida para não perder a URL da foto ---
   Future<void> updatePet(Pet updatedPet) async {
     Pet petToSave = updatedPet;
 
-    // 1. Se uma NOVA imagem foi selecionada no formulário...
     if (updatedPet.avatarFile != null) {
-      // ...faz o upload e obtém a nova URL.
       final newAvatarUrl = await _firestoreService.uploadAvatar(
         updatedPet.id,
         updatedPet.avatarFile!,
       );
-      // Atualiza o objeto com a nova URL, mantendo o resto dos dados.
       petToSave = petToSave.copyWith(avatarUrl: newAvatarUrl, avatarFile: null);
     }
-    // Se não foi selecionada uma nova imagem, a 'avatarUrl' original é mantida.
 
-    // 2. Salva o objeto final no Firestore
     await _firestoreService.setPet(petToSave);
-
-    // 3. Atualiza a lista local para refletir na UI
-    final petIndex = _pets.indexWhere((pet) => pet.id == petToSave.id);
-    if (petIndex != -1) {
-      _pets[petIndex] = petToSave;
-      notifyListeners();
-    }
   }
 
   Future<void> deletePet(String petId) async {
     await _firestoreService.deletePet(petId);
-    _pets.removeWhere((pet) => pet.id == petId);
+  }
+
+  // --- SISTEMA DE ALERTAS ---
+
+  void addAlert(String petId, String title, String message,
+      {String severity = 'medium'}) {
+    final pet = _pets.firstWhere((p) => p.id == petId,
+        orElse: () => Pet(
+            id: 'unknown',
+            name: 'Desconhecido',
+            breed: '',
+            species: Species.dog,
+            age: 0,
+            ownerId: '',
+            thresholds: VitalThresholds()));
+
+    final newAlert = Alert(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      petId: petId,
+      ownerId: pet.ownerId,
+      petName: pet.name,
+      title: title,
+      message: message,
+      severity: severity,
+      timestamp: DateTime.now(),
+    );
+
+    _alerts.insert(0, newAlert);
     notifyListeners();
   }
 
-  // --- ALTERAÇÃO: Nova função para ouvir os alertas do Firestore em tempo real ---
-  void _listenToAlerts() {
-    // Cancela qualquer "ouvinte" anterior para evitar duplicações
-    _alertSubscription?.cancel();
-
-    if (_currentUserId == null) return;
-
-    // Cria um "ouvinte" que busca alertas onde o 'ownerId' é igual ao do usuário logado
-    _alertSubscription = _alertsRef
-        .where('ownerId', isEqualTo: _currentUserId)
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .listen((snapshot) {
-      // Converte os documentos do Firestore para a nossa classe Alert
-      _alerts = snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        return Alert(
-          id: doc.id, // Usa o ID do documento do Firestore
-          petId: data['petId'],
-          petName: data['petName'],
-          ownerId: data['ownerId'],
-          timestamp: (data['timestamp'] as Timestamp).toDate(),
-          message: data['message'],
-          severity: data['severity'],
-          acknowledged: data['acknowledged'],
-        );
-      }).toList();
-
-      // Notifica a UI para se redesenhar com a nova lista de alertas
-      notifyListeners();
-    }, onError: (error) {
-      debugPrint("Erro ao ouvir alertas: $error");
-    });
-  }
-
+  // Recupera a função para reconhecer alertas (alerts_page.dart)
   void acknowledgeAlert(String alertId) {
-    // Esta função ainda está a atualizar apenas localmente.
-    // Para uma implementação completa, você adicionaria um método no FirestoreService
-    // para atualizar o campo 'acknowledged' para 'true' no Firestore.
-    final alertIndex = _alerts.indexWhere((alert) => alert.id == alertId);
-    if (alertIndex != -1) {
-      final oldAlert = _alerts[alertIndex];
-      _alerts[alertIndex] = Alert(
+    final index = _alerts.indexWhere((a) => a.id == alertId);
+    if (index != -1) {
+      // Cria uma cópia do alerta marcando como lido
+      // Precisamos copiar manualmente pois Alert é imutável
+      final oldAlert = _alerts[index];
+      _alerts[index] = Alert(
         id: oldAlert.id,
         petId: oldAlert.petId,
+        ownerId: oldAlert.ownerId,
         petName: oldAlert.petName,
-        ownerId: oldAlert.ownerId, // Garante que o ownerId é mantido
-        timestamp: oldAlert.timestamp,
+        title: oldAlert.title,
         message: oldAlert.message,
         severity: oldAlert.severity,
-        acknowledged: true,
+        timestamp: oldAlert.timestamp,
+        acknowledged: true, // AQUI ESTÁ A MUDANÇA
       );
       notifyListeners();
     }
   }
 
-  // As suas funções de simulação podem continuar aqui para testes, se desejar.
-  // ...
-
-  @override
-  void dispose() {
-    // --- ALTERAÇÃO: Garante que o "ouvinte" de alertas é cancelado ao fechar o app
-    _alertSubscription?.cancel();
-    super.dispose();
+  void clearAlerts() {
+    _alerts.clear();
+    notifyListeners();
   }
-
-  // As suas funções getLatestVitalForPet e getVitalHistory não são mais necessárias aqui,
-  // pois a lógica foi movida para o FirestoreService e para a simulação na página de medições.
-  // Pode mantê-las ou removê-las para limpar o código.
 }

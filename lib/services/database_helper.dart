@@ -1,92 +1,87 @@
-// lib/services/database_helper.dart
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/pet_models.dart';
 
+// Nota: Se você usa Firestore, este arquivo pode ser redundante.
+// Mas para corrigir o erro de compilação, aqui está a versão ajustada.
+
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
+  static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
-  DatabaseHelper._init();
+
+  factory DatabaseHelper() => _instance;
+
+  DatabaseHelper._internal();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('pets.db');
+    _database = await _initDatabase();
     return _database!;
   }
 
-  Future<Database> _initDB(String filePath) async {
-    // Se não for web, usa o caminho do diretório
-    if (!kIsWeb) {
-      final dbPath = await getDatabasesPath();
-      final path = join(dbPath, filePath);
-      return await openDatabase(path, version: 1, onCreate: _createDB);
-    }
-    // Se for WEB, usa a versão em memória que o ffi_web gerencia
-    else {
-      return await openDatabase(filePath, version: 1, onCreate: _createDB);
-    }
+  Future<Database> _initDatabase() async {
+    String path = join(await getDatabasesPath(), 'pet_monitor.db');
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: _onCreate,
+    );
   }
 
-  Future _createDB(Database db, int version) async {
-    // A criação da tabela só é relevante para plataformas não-web, mas não causa mal.
+  Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE pets (
+      CREATE TABLE pets(
         id TEXT PRIMARY KEY,
-        ownerId TEXT NOT NULL, -- Coluna adicionada para o ID do usuário
-        name TEXT NOT NULL,
-        breed TEXT NOT NULL, species TEXT NOT NULL, age INTEGER NOT NULL,
-        avatarUrl TEXT, avatarFile TEXT, healthStatus TEXT NOT NULL,
-        heartRateMin REAL NOT NULL, heartRateMax REAL NOT NULL,
-        temperatureMin REAL NOT NULL, temperatureMax REAL NOT NULL, spo2Min REAL NOT NULL
+        name TEXT,
+        breed TEXT,
+        species INTEGER,
+        age INTEGER,
+        avatarUrl TEXT,
+        ownerId TEXT,
+        healthStatus INTEGER,
+        minTemp REAL,
+        maxTemp REAL,
+        minHeartRate REAL,
+        maxHeartRate REAL,
+        minSpo2 REAL
       )
     ''');
   }
 
-  // --- MÉTODOS CRUD MODIFICADOS ---
+  Future<int> insertPet(Pet pet) async {
+    Database db = await database;
+    // Converte o Pet para um Map plano para o SQLite
+    Map<String, dynamic> map = pet.toMap();
+    // Remove o mapa aninhado 'thresholds' e adiciona os campos planos
+    map.remove('thresholds');
+    map['minTemp'] = pet.thresholds.minTemp;
+    map['maxTemp'] = pet.thresholds.maxTemp;
+    map['minHeartRate'] = pet.thresholds.minHeartRate;
+    map['maxHeartRate'] = pet.thresholds.maxHeartRate;
+    map['minSpo2'] = pet.thresholds.minSpo2;
 
-  // Agora, ao inserir, passamos o ID do dono
-  Future<void> insertPet(Pet pet, String ownerId) async {
-    if (kIsWeb) return; // Na web, não faz nada
-    final db = await instance.database;
-    final petMap = pet.toMap();
-    petMap['ownerId'] = ownerId; // Garante que o ID do dono está no mapa
-    await db.insert(
-      'pets',
-      petMap,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return await db.insert('pets', map,
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  // A busca agora é filtrada pelo ID do dono
-  Future<List<Pet>> getPets(String ownerId) async {
-    if (kIsWeb) return []; // Na web, retorna uma lista vazia
-    final db = await instance.database;
-    final maps = await db.query(
-      'pets',
-      where: 'ownerId = ?', // Cláusula WHERE para filtrar
-      whereArgs: [ownerId], // Argumento para a cláusula WHERE
-    );
-    return maps.isNotEmpty
-        ? maps.map((json) => Pet.fromMap(json)).toList()
-        : [];
-  }
+  Future<List<Pet>> getPets() async {
+    Database db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('pets');
 
-  Future<void> updatePet(Pet pet) async {
-    if (kIsWeb) return; // Na web, não faz nada
-    final db = await instance.database;
-    await db.update('pets', pet.toMap(), where: 'id = ?', whereArgs: [pet.id]);
-  }
+    return List.generate(maps.length, (i) {
+      // Reconstrói a estrutura de dados esperada pelo fromMap
+      Map<String, dynamic> petMap = Map.from(maps[i]);
+      petMap['thresholds'] = {
+        'minTemp': maps[i]['minTemp'],
+        'maxTemp': maps[i]['maxTemp'],
+        'minHeartRate': maps[i]['minHeartRate'],
+        'maxHeartRate': maps[i]['maxHeartRate'],
+        'minSpo2': maps[i]['minSpo2'],
+      };
 
-  Future<void> deletePet(String id) async {
-    if (kIsWeb) return; // Na web, não faz nada
-    final db = await instance.database;
-    await db.delete('pets', where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future close() async {
-    if (kIsWeb) return;
-    final db = await instance.database;
-    db.close();
+      // CORREÇÃO AQUI: Passa o ID separadamente como segundo argumento
+      return Pet.fromMap(petMap, maps[i]['id'].toString());
+    });
   }
 }
